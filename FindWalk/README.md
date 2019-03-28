@@ -1,5 +1,4 @@
 ```
-
     /**
      * Метод принимает координаты устройства и возвращает координаты параллелепипеда для дальнейшего поиска с учетом доверенного интервала
      * @param float $x - GPS координата широта
@@ -52,10 +51,64 @@
         $startPeriod = normolizeTimestampToMinutes(min($minMyTrack, $minFriendTrack));
         $endPeriod = normolizeTimestampToMinutes( max($maxMyTrack, $maxFriendTrack));
 
-        for ($i = $startPeriod; $i <= $endPeriod; $i+=60) {
-            
+        $timeLine = [];
+        
+        foreach($lastTrackSession as $trackItem){
+            $timeLine[normolizeTimestampToMinutes($trackItem->timestamp)][] = $trackItem; 
         }
 
+        foreach($friendsTrack as $trackItem){
+            $timeLine[normolizeTimestampToMinutes($trackItem->timestamp)][] = $trackItem; 
+        }
+
+        for ($i = $startPeriod; $i <= $endPeriod; $i+=60) {
+            if(!isset($timeLine[$i])){
+                $timeLine[$i] = [];            
+            }
+        }
+
+        $startTime = null;
+        $endTime = null;
+        $iterrator = 0;
+        $walkArray = [];
+        foreach($timeLine as $time => $tracks) {
+            if(count($tracks)){
+            
+                if(count($tracks) > 1) {
+                    $endTime = max($tracks[0]->timestamp, $tracks[1]->timestamp);                    
+                } else {
+                    $endTime = $tracks[0]->timestamp;
+                }
+                            
+            }
+            if(count($tracks) && is_null($startTime)){
+
+                if(count($tracks) > 1) {
+                    $startTime = min($tracks[0]->timestamp, $tracks[1]->timestamp);                    
+                } else {
+                    $startTime = $tracks[0]->timestamp;
+                }
+
+                $iterrator = 0;
+                continue;
+            }
+            if(!count($tracks) && !is_null($startTime)){
+                if($iterrator < 10){
+                    $iterrator++;
+                }else{
+                    if($endTime - $startTime > 10 * 60){
+                        $walkArray[] = [
+                            'start' => $startTime,
+                            'end' => $endTime
+                        ];                    
+                    }
+                    $startTime = null;
+                    $endTime = null;
+                    $iterrator = 0;
+                }
+            }
+        }
+        return $walkArray;
     }
 
 
@@ -91,12 +144,15 @@
         $joinWalks = [];
 
         foreach ($friends as $friendId => $friendsTrack) {
-            $joinWalks = array_merge($joinWalks, checkWalkInterval($lastTrackSession, $friendsTrack));
+            foreach(checkWalkInterval($lastTrackSession, $friendsTrack) as $timeInterval){
+                $timeInterval['deviceId'] = $dataTrack->device_id;
+                $timeInterval['friendId'] = $friendId;
+                $joinWalks = new joinWalk($timeInterval);
+            }
         }
 
         foreach ($joinWalks as $joinWalk) {
             $joinWalk->save();
         }
     }
-    
 ```
